@@ -50,6 +50,8 @@ const muted = ref(false)
 const volume = ref(1)
 const isFullscreen = ref(false)
 const controlsVisible = ref(false)
+// 手动拖进度或播放器内部跳转中：给出「正在跳转…」反馈，直到重新出画。
+const seeking = ref(false)
 const playbackRate = ref(1)
 const rateMenuOpen = ref(false)
 const pipActive = ref(false)
@@ -199,6 +201,7 @@ function scheduleHideControls(): void {
 
 function onPlay(): void {
   playing.value = true
+  seeking.value = false
   emit('playback', 'playing')
   scheduleHideControls()
 }
@@ -299,6 +302,7 @@ function onSeekInput(event: Event): void {
   const element = video.value
   if (!element) return
   const next = Number((event.target as HTMLInputElement).value)
+  seeking.value = true
   element.currentTime = next
   currentTime.value = next
 }
@@ -527,11 +531,14 @@ onBeforeUnmount(() => {
       @ended="emit('playback', 'ended')"
       @volumechange="onVolumeChange"
       @ratechange="onRateUpdate"
+      @seeking="seeking = true"
+      @seeked="seeking = false"
       @enterpictureinpicture="onEnterPictureInPicture"
       @leavepictureinpicture="onLeavePictureInPicture"
       @dblclick="onVideoDblClick"
       @click="onVideoClick"
       @error="onVideoError" />
+    <div v-if="seeking && !loading" class="seek-notice" role="status" aria-live="polite">正在跳转…</div>
     <div v-if="loading" class="player-loading" role="status" aria-live="polite">
       <span class="player-loading-spinner" aria-hidden="true"></span>
       <span>正在加载剧集…</span>

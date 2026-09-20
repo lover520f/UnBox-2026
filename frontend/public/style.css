@@ -593,6 +593,21 @@ body {
 /* 下一集预载元素必须隐藏：它只负责拉取资源，不能接管当前播放画面。 */
 .preload-video { display: none; }
 
+/* 手动拖动进度条时的反馈：小提示，不遮画面 */
+.seek-notice {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  padding: 0.3rem 0.7rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 0.4rem;
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
 /* 起播加载层：覆盖在画面上，由 App 在画面真正出现后收起 */
 .player-loading {
   position: absolute;

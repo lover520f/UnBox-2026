@@ -22,8 +22,8 @@ describe('resolveSkipAction', () => {
     expect(resolveSkipAction(1440, 1500, marks(0, 1430), runtime())).toBe('outro')
   })
 
-  it('时长未知或已跳过片尾时不返回 outro', () => {
-    expect(resolveSkipAction(1440, 0, marks(0, 1430), runtime())).toBeNull()
+  it('到达片尾标记即返回 outro（不依赖总时长）', () => {
+    expect(resolveSkipAction(1440, 0, marks(0, 1430), runtime())).toBe('outro')
     expect(resolveSkipAction(1440, 1500, marks(0, 1430), runtime(false, true))).toBeNull()
   })
 })

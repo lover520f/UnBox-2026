@@ -1230,8 +1230,9 @@ function applySkip(token: number) {
     return
   }
   vodSkipRuntime = { ...vodSkipRuntime, outroSkipped: true }
-  // 跳到结尾以触发 ended → 自动切集；mpv 用超大目标值等效跳到片尾。
-  if (isWeb) pendingSeek.value = vodPlaybackDuration.value || vodPlaybackPosition.value
+  // 跳到结尾以触发 ended → 自动切集。总时长未知（HLS 常见 Infinity）时给一个
+  // 超大目标值，由播放器钳到结尾，而不是用当前位置（那等于没跳）。
+  if (isWeb) pendingSeek.value = vodPlaybackDuration.value > 0 ? vodPlaybackDuration.value : 1e9
   else void ShellService.Seek(1e9).catch(() => {})
   showSkipNotice('已跳过片尾')
 }
