@@ -51,7 +51,6 @@ const isFullscreen = ref(false)
 const controlsVisible = ref(false)
 const playbackRate = ref(1)
 const rateMenuOpen = ref(false)
-const skipMenuOpen = ref(false)
 const pipActive = ref(false)
 const pipSupported = ref(false)
 const HIDE_CONTROLS_DELAY = 3000
@@ -80,7 +79,6 @@ function cleanup() {
   attachGeneration++
   trackState.value?.detach(); trackState.value = null
   menuOpen.value = false
-  skipMenuOpen.value = false
   autoplayPending = false
   playing.value = false
   currentTime.value = 0
@@ -345,18 +343,16 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 // markIntro/markOutro/clearMarks 把标记动作连同当前播放位置上交给 App 持久化。
+// 两个标记按钮直接显示在播放器上（不再收进二级菜单），按钮里回显已标记的时间。
 function markIntro(): void {
-  skipMenuOpen.value = false
   emit('markIntro', video.value?.currentTime ?? 0)
 }
 
 function markOutro(): void {
-  skipMenuOpen.value = false
   emit('markOutro', video.value?.currentTime ?? 0)
 }
 
 function clearMarks(): void {
-  skipMenuOpen.value = false
   emit('clearSkipMarks')
 }
 
@@ -464,7 +460,6 @@ function onDocumentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
   if (menuOpen.value && !target.closest('.track-menu, .track-toggle')) menuOpen.value = false
   if (rateMenuOpen.value && !target.closest('.rate-menu, .rate-btn')) rateMenuOpen.value = false
-  if (skipMenuOpen.value && !target.closest('.skip-menu, .skip-btn')) skipMenuOpen.value = false
 }
 
 async function attach(plan: PlaybackPlan | null) {
@@ -548,13 +543,14 @@ onBeforeUnmount(() => {
       <div class="player-tools">
         <button v-if="isHls" class="track-toggle" type="button" title="轨道设置" aria-label="轨道设置" @click.stop="menuOpen = !menuOpen">⚙</button>
         <button class="rotate-toggle" type="button" :title="`画面旋转（当前 ${rotation}°）`" aria-label="画面旋转" @click.stop="cycleRotation">⟳ {{ rotation }}°</button>
-        <button class="skip-btn" type="button" title="跳过片头片尾" aria-label="跳过片头片尾" @click.stop="skipMenuOpen = !skipMenuOpen">⏭</button>
-        <ul v-if="skipMenuOpen" class="skip-menu">
-          <li class="skip-head">片头 {{ skipMarks?.IntroEnd ? formatTime(skipMarks.IntroEnd) : '未标记' }} · 片尾 {{ skipMarks?.OutroStart ? formatTime(skipMarks.OutroStart) : '未标记' }}</li>
-          <li @click.stop="markIntro">标记片头结束</li>
-          <li @click.stop="markOutro">标记片尾开始</li>
-          <li @click.stop="clearMarks">清除标记</li>
-        </ul>
+        <button class="skip-btn" type="button"
+          :title="skipMarks?.IntroEnd ? `片头结束点 ${formatTime(skipMarks.IntroEnd)}，点击重新标记为当前位置` : '点击把当前位置标记为片头结束'"
+          aria-label="标记片头结束" @click.stop="markIntro">片头 {{ skipMarks?.IntroEnd ? formatTime(skipMarks.IntroEnd) : '--' }}</button>
+        <button class="skip-btn" type="button"
+          :title="skipMarks?.OutroStart ? `片尾开始点 ${formatTime(skipMarks.OutroStart)}，点击重新标记为当前位置` : '点击把当前位置标记为片尾开始'"
+          aria-label="标记片尾开始" @click.stop="markOutro">片尾 {{ skipMarks?.OutroStart ? formatTime(skipMarks.OutroStart) : '--' }}</button>
+        <button v-if="skipMarks?.IntroEnd || skipMarks?.OutroStart" class="skip-btn skip-clear" type="button"
+          title="清除跳过标记" aria-label="清除跳过标记" @click.stop="clearMarks">✕</button>
       </div>
       <div class="player-bar">
         <button class="ctrl-btn" type="button" :title="playing ? '暂停' : '播放'" :aria-label="playing ? '暂停' : '播放'" @click.stop="togglePlay">

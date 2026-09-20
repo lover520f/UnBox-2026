@@ -435,21 +435,20 @@ describe('PlaybackView', () => {
     expect(wrapper.find('.player-loading').exists()).toBe(false)
   })
 
-  it('跳过菜单可标记片头/片尾并清除', async () => {
-    const wrapper = await mountView()
+  it('片头/片尾按钮直接显示并回显标记时间', async () => {
+    const wrapper = mount(PlaybackView, {
+      props: { plan: { ID: 'p1', Backend: 'web', URL: '/x.m3u8', Kind: 'hls', CanFallback: true }, skipMarks: { IntroEnd: 92, OutroStart: 0 } },
+    })
+    await nextTick()
     setVideoTime(wrapper, 95)
-
-    await wrapper.find('.skip-btn').trigger('click')
-    expect(wrapper.find('.skip-menu').exists()).toBe(true)
-    await wrapper.findAll('.skip-menu li')[1].trigger('click')
+    const intro = wrapper.find('button[aria-label="标记片头结束"]')
+    expect(intro.text()).toContain('01:32')
+    expect(wrapper.find('button[aria-label="标记片尾开始"]').text()).toContain('--')
+    await intro.trigger('click')
     expect(wrapper.emitted('markIntro')).toEqual([[95]])
-
-    await wrapper.find('.skip-btn').trigger('click')
-    await wrapper.findAll('.skip-menu li')[2].trigger('click')
+    await wrapper.find('button[aria-label="标记片尾开始"]').trigger('click')
     expect(wrapper.emitted('markOutro')).toEqual([[95]])
-
-    await wrapper.find('.skip-btn').trigger('click')
-    await wrapper.findAll('.skip-menu li')[3].trigger('click')
+    await wrapper.find('button[aria-label="清除跳过标记"]').trigger('click')
     expect(wrapper.emitted('clearSkipMarks')).toHaveLength(1)
   })
 

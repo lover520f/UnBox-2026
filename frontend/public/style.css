@@ -636,8 +636,7 @@ body {
    菜单 <li> 都会让点击穿透到 <video>，表现为「点控件却触发了播放/暂停」。 */
 .player-controls button,
 .player-controls input,
-.player-controls .rate-menu,
-.player-controls .skip-menu { pointer-events: auto; }
+.player-controls .rate-menu { pointer-events: auto; }
 
 /* 右上角工具组：轨道设置（仅 HLS）与画面旋转按钮并排 */
 .player-tools {
@@ -693,8 +692,7 @@ body {
 /* 倍速用自绘菜单，与其它控件同一观感（原生 select 无法与按钮统一） */
 .rate-control { position: relative; }
 
-.rate-menu,
-.skip-menu {
+.rate-menu {
   position: absolute;
   right: 0;
   bottom: 2.1rem;
@@ -709,8 +707,7 @@ body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
-.rate-menu li,
-.skip-menu li {
+.rate-menu li {
   padding: 0.25rem 0.45rem;
   color: var(--text-soft);
   border-radius: 0.25rem;
@@ -718,13 +715,12 @@ body {
   font-size: 0.8rem;
 }
 
-.rate-menu li:hover,
-.skip-menu li:hover { background: var(--btn-bg); }
+.rate-menu li:hover { background: var(--btn-bg); }
 .rate-menu li.active { color: var(--accent); background: var(--btn-active-bg); }
 
-.skip-menu { min-width: 8.5rem; }
-.skip-menu .skip-head { color: var(--text-dim); font-size: 0.72rem; cursor: default; }
-.skip-menu .skip-head:hover { background: transparent; }
+/* 片头/片尾标记按钮：直接显示在工具栏，按钮里回显已标记时间 */
+.player-tools .skip-btn { font-variant-numeric: tabular-nums; }
+.player-tools .skip-clear { min-width: 1.4rem; padding: 0 0.25rem; }
 
 /* 跳过提示：短暂浮在画面上方 */
 .skip-notice {
