@@ -427,6 +427,14 @@ describe('PlaybackView', () => {
     expect(request).toHaveBeenCalled()
   })
 
+  it('loading 为真时显示加载层，直到画面出现', async () => {
+    const wrapper = mount(PlaybackView, { props: { plan: null, loading: true } })
+    expect(wrapper.find('.player-loading').exists()).toBe(true)
+    expect(wrapper.text()).toContain('正在加载剧集')
+    await wrapper.setProps({ loading: false })
+    expect(wrapper.find('.player-loading').exists()).toBe(false)
+  })
+
   it('mpv 后端不渲染自绘播放控件', async () => {
     const wrapper = await mountView({ Backend: 'mpv' })
     expect(wrapper.find('.player-controls').exists()).toBe(false)

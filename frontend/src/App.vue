@@ -88,6 +88,8 @@ const livePlaybackError = ref('')
 const vodPlaybackError = ref('')
 // 当前点播进度（秒）：换源续播与预载判断都用它，Web 由 progress 事件更新、mpv 由 playback:event 更新。
 const vodPlaybackPosition = ref(0)
+// 起播加载中：从发起播放到画面真正出现（首个 playing 事件）之间为真。
+const vodPlayerLoading = ref(false)
 const preloadPlan = ref<PlaybackPlan | null>(null)
 let preloadGeneration = 0
 let nextPlaybackToken = 0
@@ -982,6 +984,7 @@ async function doPlayEpisode(site: string, epID: string, epName: string, source:
   vodAutomation.beginSession()
   void releasePreload()
   const token = beginPlayback('vod')
+  vodPlayerLoading.value = true
   // 切集/换源时不预先清空播放计划：清空会卸载 <video>，导致全屏被中断、画面黑屏，
   // 新流就绪后还得用户手动点一次播放。新计划就绪后直接替换；失败时下面的 catch 会清空。
   if (vodPlaybackPlan.value?.Backend !== 'web') vodPlaybackPlan.value = null
@@ -999,6 +1002,7 @@ async function doPlayEpisode(site: string, epID: string, epName: string, source:
     if (isCurrentPlayback('vod', token)) {
       vodPlaybackPlan.value = null
       vodPlaybackToken.value = 0
+      vodPlayerLoading.value = false
       vodPlaybackStatus.value = 'error'
       vodPlaybackError.value = String(e)
       throw e
@@ -1097,6 +1101,7 @@ async function stopPlayback(scope: PlaybackScope) {
     // 切页/停止：让自动任务失效并取消下一集预载。
     vodAutomation.stop()
     void releasePreload()
+    vodPlayerLoading.value = false
     vodPlaybackPlan.value = null
     vodPlaybackToken.value = 0
     vodNowPlaying.value = ''
@@ -1157,6 +1162,7 @@ function onVodPlaybackSignal(token: number, state: PlaybackState, message?: stri
     return
   }
   if (state === 'error' && message) vodPlaybackError.value = message
+  if (state === 'playing' || state === 'error') vodPlayerLoading.value = false
   vodAutomation.signal(token, state)
 }
 
@@ -1648,7 +1654,7 @@ onBeforeUnmount(() => {
               <div class="vod-player">
                 <p v-if="vodPlaybackStatus === 'preparing'" class="playback-status" aria-live="polite">正在加载剧集…</p>
                 <p v-if="vodPlaybackStatus === 'error'" class="playback-error" aria-live="assertive">剧集播放失败：{{ vodPlaybackError }}</p>
-                <PlaybackView :plan="vodPagePlaybackPlan" :seek-to="pendingSeek" :suppress-fallback="playbackSettings.AutoSwitchSource" @fallback="(id, position) => fallbackToMpv('vod', id, vodPlaybackToken, position)" @playback="(state, message) => onVodPlaybackSignal(vodPlaybackToken, state, message)" @progress="(time, duration) => onVodProgress(vodPlaybackToken, time, duration)" />
+                <PlaybackView :plan="vodPagePlaybackPlan" :seek-to="pendingSeek" :loading="vodPlayerLoading" :suppress-fallback="playbackSettings.AutoSwitchSource" @fallback="(id, position) => fallbackToMpv('vod', id, vodPlaybackToken, position)" @playback="(state, message) => onVodPlaybackSignal(vodPlaybackToken, state, message)" @progress="(time, duration) => onVodProgress(vodPlaybackToken, time, duration)" />
                 <PreloadView :plan="preloadPlan" />
                 <div v-if="(vodDetail.Sources ?? []).length" class="ep-src-tabs">
                   <button v-for="src in vodDetail.Sources" :key="src" :class="{ active: src === activeSource }" @click="selectEpisodeSource(src)">{{ src }}</button>

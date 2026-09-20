@@ -22,6 +22,8 @@ const props = defineProps<{
   emptyText?: string
   /** 为真时播放错误只上报，不再自行降级到 mpv，由点播会话协调器决定换源。 */
   suppressFallback?: boolean
+  /** 起播加载中：App 在拿到播放计划到画面真正出现之间置真。 */
+  loading?: boolean
 }>()
 const emit = defineEmits<{
   fallback: [id: string, position: number]
@@ -513,6 +515,10 @@ onBeforeUnmount(() => {
       @dblclick="onVideoDblClick"
       @click="onVideoClick"
       @error="onVideoError" />
+    <div v-if="loading" class="player-loading" role="status" aria-live="polite">
+      <span class="player-loading-spinner" aria-hidden="true"></span>
+      <span>正在加载剧集…</span>
+    </div>
     <div v-if="plan?.Backend === 'web'" class="player-controls">
       <div class="player-tools">
         <button v-if="isHls" class="track-toggle" type="button" title="轨道设置" aria-label="轨道设置" @click.stop="menuOpen = !menuOpen">⚙</button>
