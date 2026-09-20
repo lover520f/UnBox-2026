@@ -16,10 +16,18 @@ export interface TrackState {
   detach(): void
 }
 
+// levelLabel 生成清晰度文案：优先真实分辨率（宽×高），其次高度、名称，
+// 最后才退回码率。hls.js 的 level 有时只给 width、bitrate 也可能是 0，
+// 直接按“码率 0k”显示会让用户误以为流有问题。
 function levelLabel(l: any, i: number): string {
-  if (l.height) return `${l.height}p`
-  if (l.name) return l.name
-  return `码率 ${Math.round((l.bitrate || 0) / 1000)}k`
+  const width = Number(l?.width) || 0
+  const height = Number(l?.height) || 0
+  if (width && height) return `${width}×${height}`
+  if (height) return `${height}p`
+  if (width) return `${width}×?`
+  if (l?.name) return String(l.name)
+  const kbps = Math.round((Number(l?.bitrate) || 0) / 1000)
+  return kbps > 0 ? `码率 ${kbps}k` : `清晰度${i + 1}`
 }
 
 export function useHlsTracks(hls: Hls): TrackState {

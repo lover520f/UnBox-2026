@@ -725,9 +725,8 @@ body {
 /* 跳过提示：短暂浮在画面上方 */
 .skip-notice {
   position: absolute;
-  left: 50%;
-  top: 0.75rem;
-  transform: translateX(-50%);
+  right: 0.3rem;
+  top: 2.4rem;
   z-index: 5;
   padding: 0.25rem 0.6rem;
   color: #fff;
