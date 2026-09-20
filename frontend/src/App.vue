@@ -15,10 +15,12 @@ import { initializeHomeState } from './startup'
 import { playbackPlanForMode, resolvePlaybackFallback, shouldPauseStalePlayback, shouldRecordVodProgress, shouldShowMpvInstallPrompt, type ActivePlaybackSession, type PlaybackScope, type PlaybackStatus } from './playbackScope'
 import { createVodSearchCache, isCurrentVodCategoryRequest, isVodSearchCacheValid, nextVodCategoryRequest, nextVodSearchRequest, pickResumeSeek, removeVodFavorite, removeVodHistory, removeVodSearchHistory, resolveVodSelection, shouldShowVodNoResults, upsertVodSearchHistory, vodBackTarget, vodResumeView, vodSearchQueryForReturn, type VodDetailOrigin, type VodSearchCache, type VodView } from './vodNavigation'
 import { appendVodItems, hasNextVodPage, nextVodPage } from './vodPagination'
+import { formatUpdatedAt, normalizeLeaderboard } from './donation'
 import DOMPurify from 'dompurify'
 
 // 爱发电赞助主页
 const DONATE_URL = 'https://afdian.com/a/teaGod'
+const DEFAULT_DONOR_AVATAR = '/appicon.png'
 
 interface ChannelInfo { ID: string; Name: string; Group: string; Logo: string; Favorited: boolean }
 interface Progress { Stage: string; Message: string; Done: number; Total: number }
@@ -158,6 +160,8 @@ const internalVersion = ref('')
 const showAbout = ref(false)
 const showDisclaimer = ref(false)
 const showOpenSource = ref(false)
+const showDonations = ref(false)
+const donationLeaderboard = ref(normalizeLeaderboard(null))
 const catsCollapsed = ref(false)
 const infoCollapsed = ref(false)
 
@@ -297,6 +301,27 @@ function handleError(e: unknown) {
 async function openAbout() {
   try { internalVersion.value = await ShellService.InternalVersion() } catch { /* 忽略 */ }
   showAbout.value = true
+}
+
+// openDonations 只在用户打开榜单时拉取；请求失败保持静默，不弹错误提示。
+async function openDonations() {
+  showDonations.value = true
+  try {
+    donationLeaderboard.value = normalizeLeaderboard(await ShellService.GetDonationLeaderboard())
+  } catch {
+    donationLeaderboard.value = normalizeLeaderboard(null)
+  }
+}
+
+// donorAvatarError 首次失败切换到默认头像，默认头像仍失败时隐藏，避免浏览器碎图。
+function donorAvatarError(event: Event) {
+  const image = event.currentTarget as HTMLImageElement
+  if (image.dataset.fallback === 'true') {
+    image.hidden = true
+    return
+  }
+  image.dataset.fallback = 'true'
+  image.src = DEFAULT_DONOR_AVATAR
 }
 
 // openURL 用系统默认浏览器打开外部链接（源码 / 捐助 / 下载新版本）。
@@ -1847,7 +1872,7 @@ onBeforeUnmount(() => {
           <button @click="showDisclaimer = true">免责条款</button>
           <button @click="showOpenSource = true">开源库</button>
           <button @click="openURL('https://github.com/teaGod-s/UnBox')">源码</button>
-          <button @click="openURL(DONATE_URL)">捐助</button>
+          <button @click="openDonations">捐助榜单</button>
         </div>
         <p v-if="updateMsg" class="home-empty">{{ updateMsg }}</p>
         <div v-if="updateInfo?.HasUpdate && updateInfo.URL" class="src-add">
@@ -1938,6 +1963,33 @@ onBeforeUnmount(() => {
           <li><a href="https://github.com/xqq/mpegts.js" target="_blank" rel="noopener">mpegts.js</a><span class="oss-ver">v1.8.2</span><span class="oss-lic">MIT</span> — MPEG-TS / FLV 播放</li>
           <li><a href="https://github.com/cure53/DOMPurify" target="_blank" rel="noopener">DOMPurify</a><span class="oss-ver">v3.4.14</span><span class="oss-lic">Apache-2.0</span> — HTML 清洗</li>
         </ul>
+      </div>
+    </div>
+
+    <div v-if="showDonations" class="settings-overlay" @click.self="showDonations = false">
+      <div class="settings-panel donation-leaderboard" role="dialog" aria-modal="true" aria-labelledby="donation-leaderboard-title">
+        <div class="settings-head">
+          <h2 id="donation-leaderboard-title">捐助榜单</h2>
+          <button type="button" aria-label="关闭" @click="showDonations = false">✕</button>
+        </div>
+        <ul v-if="donationLeaderboard.Donors.length" class="donation-list">
+          <li v-for="(donor, index) in donationLeaderboard.Donors" :key="donor.ID || 'anonymous-' + index">
+            <img
+              class="donation-avatar"
+              :src="donor.Avatar || DEFAULT_DONOR_AVATAR"
+              :alt="donor.Name + '的头像'"
+              loading="lazy"
+              referrerpolicy="no-referrer"
+              @error="donorAvatarError"
+            />
+            <span class="donation-name">{{ donor.Name }}</span>
+          </li>
+        </ul>
+        <p v-else class="donation-empty">还没有捐助记录，感谢每一份支持</p>
+        <div class="donation-footer">
+          <span class="donation-updated">数据更新于 {{ formatUpdatedAt(donationLeaderboard.UpdatedAt) }}</span>
+          <button type="button" class="donation-action" @click="openURL(DONATE_URL)">捐助</button>
+        </div>
       </div>
     </div>
 

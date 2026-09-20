@@ -241,4 +241,17 @@ describe('App 播放事件接线', () => {
   it('切换剧集时不预先清空 web 播放计划', () => {
     expect(app).toContain("if (vodPlaybackPlan.value?.Backend !== 'web') vodPlaybackPlan.value = null")
   })
+
+  it('设置页通过捐助榜单弹窗展示，且关于区不再有独立捐助按钮', () => {
+    expect(app).toContain('const showDonations = ref(false)')
+    expect(app).toContain('GetDonationLeaderboard()')
+    expect(app).toContain('openURL(DONATE_URL)')
+    expect(app).toContain('donation-leaderboard')
+
+    const aboutStart = app.indexOf('<h3>关于</h3>')
+    const aboutEnd = app.indexOf('<h3>日志</h3>', aboutStart)
+    const aboutSection = app.slice(aboutStart, aboutEnd)
+    expect(aboutSection).toContain('@click="openDonations"')
+    expect(aboutSection).not.toContain('@click="openURL(DONATE_URL)"')
+  })
 })
