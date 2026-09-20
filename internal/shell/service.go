@@ -249,6 +249,8 @@ func newShellService(pv provider.Provider, p player.Player, st *store.Store) *Sh
 		mpvPlugin:        manager,
 		vodCategoryCache: make(map[string]vodCategoryCacheEntry),
 		vodCategoryNow:   time.Now,
+		httpClient:       &http.Client{Timeout: 10 * time.Second},
+		now:              time.Now,
 	}
 	return svc
 }

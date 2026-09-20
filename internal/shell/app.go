@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/http"
 	"os"
 	"runtime"
 	"sync"
@@ -61,6 +62,8 @@ type ShellService struct {
 	vodSiteLines         map[string]string // 点播站点 key → 线路名
 	vodCategoryCache     map[string]vodCategoryCacheEntry
 	vodCategoryNow       func() time.Time
+	httpClient           *http.Client
+	now                  func() time.Time
 	searchCancel         context.CancelFunc // 当前全站搜索的取消函数
 	searchSeq            uint64             // 全站搜索请求序号，事件携带此序号隔离过期结果
 }
