@@ -859,3 +859,60 @@ func TestCheckSubscriptionContentRejectsWebPage(t *testing.T) {
 		}
 	}
 }
+
+func TestVodSkipMarksRoundTripAndDefaults(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/skip.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	svc := newPlaybackSettingsService(t, st)
+
+	if got := svc.GetVodSkipMarks("demo", "1001"); got != (VodSkipMarks{}) {
+		t.Fatalf("缺失时为 %#v，期望零值", got)
+	}
+	want := VodSkipMarks{IntroEnd: 92.5, OutroStart: 1430}
+	if err := svc.SetVodSkipMarks("demo", "1001", want); err != nil {
+		t.Fatal(err)
+	}
+	svc2 := newPlaybackSettingsService(t, st)
+	if got := svc2.GetVodSkipMarks("demo", "1001"); got != want {
+		t.Fatalf("往返读到 %#v，期望 %#v", got, want)
+	}
+	// 不同剧集互不影响
+	if got := svc2.GetVodSkipMarks("demo", "1002"); got != (VodSkipMarks{}) {
+		t.Fatalf("其它剧集不应共享标记: %#v", got)
+	}
+}
+
+func TestVodSkipMarksInvalidJSONFallsBackToZero(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/skip-invalid.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	svc := newPlaybackSettingsService(t, st)
+	if err := st.SetKV(vodSkipKey("demo", "1001"), "not-json"); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.GetVodSkipMarks("demo", "1001"); got != (VodSkipMarks{}) {
+		t.Fatalf("非法值应回退零值，得 %#v", got)
+	}
+}
+
+func TestVodSkipMarksStoreUnavailable(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/skip-closed.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := newPlaybackSettingsService(t, st)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.GetVodSkipMarks("demo", "1001"); got != (VodSkipMarks{}) {
+		t.Fatalf("store 不可用应返回零值，得 %#v", got)
+	}
+	if err := svc.SetVodSkipMarks("demo", "1001", VodSkipMarks{IntroEnd: 1}); err == nil {
+		t.Fatal("store 不可用时写入应报错")
+	}
+}

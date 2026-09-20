@@ -1751,6 +1751,45 @@ func (s *ShellService) GetTheme() (string, error) {
 	return v, err
 }
 
+// VodSkipMarks 是一部剧的跳过片头片尾标记（秒）；0 表示未标记。
+type VodSkipMarks struct {
+	IntroEnd   float64
+	OutroStart float64
+}
+
+// vodSkipKey 是跳过标记在 store.kv 里的键：按「站点 + 影片」共享，同剧各集通用。
+func vodSkipKey(site, vodID string) string {
+	return fmt.Sprintf("vod.skip.%s.%s", site, vodID)
+}
+
+// GetVodSkipMarks 读取跳过标记；缺失、非法或存储不可用时返回零值（不影响播放）。
+func (s *ShellService) GetVodSkipMarks(site, vodID string) VodSkipMarks {
+	if s.store == nil {
+		return VodSkipMarks{}
+	}
+	raw, ok, err := s.store.GetKV(vodSkipKey(site, vodID))
+	if err != nil || !ok {
+		return VodSkipMarks{}
+	}
+	var marks VodSkipMarks
+	if err := json.Unmarshal([]byte(raw), &marks); err != nil {
+		return VodSkipMarks{}
+	}
+	return marks
+}
+
+// SetVodSkipMarks 持久化跳过标记。
+func (s *ShellService) SetVodSkipMarks(site, vodID string, marks VodSkipMarks) error {
+	if s.store == nil {
+		return nil
+	}
+	raw, err := json.Marshal(marks)
+	if err != nil {
+		return err
+	}
+	return s.store.SetKV(vodSkipKey(site, vodID), string(raw))
+}
+
 // GetPlaybackSettings 返回点播播放自动化选项；缺失、非法或存储读取失败均按关闭处理。
 func (s *ShellService) GetPlaybackSettings() PlaybackSettings {
 	return PlaybackSettings{
