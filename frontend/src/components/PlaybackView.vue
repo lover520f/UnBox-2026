@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Hls, { type ErrorData, type Events } from 'hls.js'
 import mpegts from 'mpegts.js'
 import { useHlsTracks, type TrackState } from '../useHlsTracks'
+import type { VodSkipMarks } from '../vodSkip'
 import TrackMenu from './TrackMenu.vue'
 
 export interface PlaybackPlan {
@@ -24,11 +25,16 @@ const props = defineProps<{
   suppressFallback?: boolean
   /** 起播加载中：App 在拿到播放计划到画面真正出现之间置真。 */
   loading?: boolean
+  /** 当前剧集的跳过标记（秒，0 为未标记），由 App 持久化。 */
+  skipMarks?: VodSkipMarks
 }>()
 const emit = defineEmits<{
   fallback: [id: string, position: number]
   progress: [time: number, duration: number]
   playback: [state: PlaybackState, message?: string]
+  markIntro: [position: number]
+  markOutro: [position: number]
+  clearSkipMarks: []
 }>()
 const video = ref<HTMLVideoElement | null>(null)
 const trackState = ref<TrackState | null>(null)
@@ -45,6 +51,7 @@ const isFullscreen = ref(false)
 const controlsVisible = ref(false)
 const playbackRate = ref(1)
 const rateMenuOpen = ref(false)
+const skipMenuOpen = ref(false)
 const pipActive = ref(false)
 const pipSupported = ref(false)
 const HIDE_CONTROLS_DELAY = 3000
@@ -73,6 +80,7 @@ function cleanup() {
   attachGeneration++
   trackState.value?.detach(); trackState.value = null
   menuOpen.value = false
+  skipMenuOpen.value = false
   autoplayPending = false
   playing.value = false
   currentTime.value = 0
@@ -336,6 +344,22 @@ function onKeydown(event: KeyboardEvent): void {
   }
 }
 
+// markIntro/markOutro/clearMarks 把标记动作连同当前播放位置上交给 App 持久化。
+function markIntro(): void {
+  skipMenuOpen.value = false
+  emit('markIntro', video.value?.currentTime ?? 0)
+}
+
+function markOutro(): void {
+  skipMenuOpen.value = false
+  emit('markOutro', video.value?.currentTime ?? 0)
+}
+
+function clearMarks(): void {
+  skipMenuOpen.value = false
+  emit('clearSkipMarks')
+}
+
 // formatTime 输出 mm:ss（超过一小时给 h:mm:ss）。
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '00:00'
@@ -440,6 +464,7 @@ function onDocumentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
   if (menuOpen.value && !target.closest('.track-menu, .track-toggle')) menuOpen.value = false
   if (rateMenuOpen.value && !target.closest('.rate-menu, .rate-btn')) rateMenuOpen.value = false
+  if (skipMenuOpen.value && !target.closest('.skip-menu, .skip-btn')) skipMenuOpen.value = false
 }
 
 async function attach(plan: PlaybackPlan | null) {
@@ -523,6 +548,13 @@ onBeforeUnmount(() => {
       <div class="player-tools">
         <button v-if="isHls" class="track-toggle" type="button" title="轨道设置" aria-label="轨道设置" @click.stop="menuOpen = !menuOpen">⚙</button>
         <button class="rotate-toggle" type="button" :title="`画面旋转（当前 ${rotation}°）`" aria-label="画面旋转" @click.stop="cycleRotation">⟳ {{ rotation }}°</button>
+        <button class="skip-btn" type="button" title="跳过片头片尾" aria-label="跳过片头片尾" @click.stop="skipMenuOpen = !skipMenuOpen">⏭</button>
+        <ul v-if="skipMenuOpen" class="skip-menu">
+          <li class="skip-head">片头 {{ skipMarks?.IntroEnd ? formatTime(skipMarks.IntroEnd) : '未标记' }} · 片尾 {{ skipMarks?.OutroStart ? formatTime(skipMarks.OutroStart) : '未标记' }}</li>
+          <li @click.stop="markIntro">标记片头结束</li>
+          <li @click.stop="markOutro">标记片尾开始</li>
+          <li @click.stop="clearMarks">清除标记</li>
+        </ul>
       </div>
       <div class="player-bar">
         <button class="ctrl-btn" type="button" :title="playing ? '暂停' : '播放'" :aria-label="playing ? '暂停' : '播放'" @click.stop="togglePlay">

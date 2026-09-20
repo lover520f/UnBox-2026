@@ -10,6 +10,7 @@ import { createLibraryThumbPipeline } from './libraryThumb'
 import { contentCardStyleLabel, contentCardStyleOptions, normalizeContentCardStyle, type ContentCardStyle } from './contentCardStyle'
 import { createPlaybackSettings, PLAYBACK_SETTING_ITEMS, type PlaybackSettingKey, type PlaybackSettingsApi } from './playbackSettings'
 import { VodAutomation, nextEpisodeInSource, sameNameEpisodeOnSource, type VodAutomationHost } from './playbackAutomation'
+import { resolveSkipAction, type SkipRuntime, type VodSkipMarks } from './vodSkip'
 import { initializeHomeState } from './startup'
 import { playbackPlanForMode, resolvePlaybackFallback, shouldPauseStalePlayback, shouldRecordVodProgress, shouldShowMpvInstallPrompt, type ActivePlaybackSession, type PlaybackScope, type PlaybackStatus } from './playbackScope'
 import { createVodSearchCache, isCurrentVodCategoryRequest, isVodSearchCacheValid, nextVodCategoryRequest, nextVodSearchRequest, pickResumeSeek, removeVodFavorite, removeVodHistory, removeVodSearchHistory, resolveVodSelection, shouldShowVodNoResults, upsertVodSearchHistory, vodBackTarget, vodResumeView, vodSearchQueryForReturn, type VodDetailOrigin, type VodSearchCache, type VodView } from './vodNavigation'
@@ -90,6 +91,12 @@ const vodPlaybackError = ref('')
 const vodPlaybackPosition = ref(0)
 // 起播加载中：从发起播放到画面真正出现（首个 playing 事件）之间为真。
 const vodPlayerLoading = ref(false)
+// 跳过片头片尾：标记按「站点+影片」持久化，同剧各集共用；runtime 记录本集已跳过的动作。
+const vodSkipMarks = ref<VodSkipMarks>({ IntroEnd: 0, OutroStart: 0 })
+const vodPlaybackDuration = ref(0)
+const vodSkipNotice = ref('')
+let vodSkipRuntime: SkipRuntime = { introSkipped: false, outroSkipped: false }
+let skipNoticeTimer: ReturnType<typeof setTimeout> | null = null
 const preloadPlan = ref<PlaybackPlan | null>(null)
 let preloadGeneration = 0
 let nextPlaybackToken = 0
@@ -993,8 +1000,11 @@ async function doPlayEpisode(site: string, epID: string, epName: string, source:
   vodPlaybackError.value = ''
   vodNowPlaying.value = epName
   vodPlaybackPosition.value = seekSeconds
+  vodPlaybackDuration.value = 0
+  vodSkipRuntime = { introSkipped: false, outroSkipped: false }
   pendingSeek.value = seekSeconds
   activeSource.value = source
+  void loadVodSkipMarks(site)
   let plan: PlaybackPlan
   try {
     plan = await ShellService.PrepareVodWithToken(site, epID, token) as unknown as PlaybackPlan
@@ -1163,6 +1173,7 @@ function onVodPlaybackSignal(token: number, state: PlaybackState, message?: stri
   }
   if (state === 'error' && message) vodPlaybackError.value = message
   if (state === 'playing' || state === 'error') vodPlayerLoading.value = false
+  if (state === 'ready') applySkip(token)
   vodAutomation.signal(token, state)
 }
 
@@ -1175,6 +1186,7 @@ function onPlaybackEvent(payload: unknown) {
   switch (data?.Kind) {
     case 'position':
       vodPlaybackPosition.value = data.Position ?? vodPlaybackPosition.value
+      applySkip(token)
       break
     case 'playing':
     case 'buffering':
@@ -1185,6 +1197,67 @@ function onPlaybackEvent(payload: unknown) {
       void vodAutomation.ended(token)
       break
   }
+}
+
+// loadVodSkipMarks 读取当前影片的跳过标记；失败按未标记处理，不影响播放。
+async function loadVodSkipMarks(site: string) {
+  const vodID = vodDetail.value?.ID
+  if (!site || !vodID) return
+  try {
+    vodSkipMarks.value = await ShellService.GetVodSkipMarks(site, vodID) as unknown as VodSkipMarks
+  } catch { vodSkipMarks.value = { IntroEnd: 0, OutroStart: 0 } }
+}
+
+// showSkipNotice 在画面上短暂提示跳过结果。
+function showSkipNotice(text: string) {
+  vodSkipNotice.value = text
+  if (skipNoticeTimer !== null) clearTimeout(skipNoticeTimer)
+  skipNoticeTimer = setTimeout(() => { vodSkipNotice.value = ''; skipNoticeTimer = null }, 1500)
+}
+
+// applySkip 用统一判定决定是否跳片头/片尾；Web 走 seek-to，mpv 直接 Seek。
+function applySkip(token: number) {
+  if (!isCurrentPlayback('vod', token)) return
+  const action = resolveSkipAction(vodPlaybackPosition.value, vodPlaybackDuration.value, vodSkipMarks.value, vodSkipRuntime)
+  if (!action) return
+  const isWeb = vodPlaybackPlan.value?.Backend === 'web'
+  if (action === 'intro') {
+    vodSkipRuntime = { ...vodSkipRuntime, introSkipped: true }
+    const target = vodSkipMarks.value.IntroEnd
+    if (isWeb) pendingSeek.value = target
+    else void ShellService.Seek(target).catch(() => {})
+    showSkipNotice('已跳过片头')
+    return
+  }
+  vodSkipRuntime = { ...vodSkipRuntime, outroSkipped: true }
+  // 跳到结尾以触发 ended → 自动切集；mpv 用超大目标值等效跳到片尾。
+  if (isWeb) pendingSeek.value = vodPlaybackDuration.value || vodPlaybackPosition.value
+  else void ShellService.Seek(1e9).catch(() => {})
+  showSkipNotice('已跳过片尾')
+}
+
+// 标记动作：记录当前位置并持久化；片尾标记当集即生效。
+async function markSkipAt(kind: 'intro' | 'outro', position: number) {
+  const site = currentVod.value?.site || detailSite.value || activeSite.value
+  const vodID = currentVod.value?.vodID || vodDetail.value?.ID
+  if (!site || !vodID) return
+  const next = { ...vodSkipMarks.value }
+  if (kind === 'intro') next.IntroEnd = position
+  else next.OutroStart = position
+  vodSkipMarks.value = next
+  vodSkipRuntime = kind === 'intro' ? { ...vodSkipRuntime, introSkipped: true } : { ...vodSkipRuntime, outroSkipped: false }
+  showSkipNotice(kind === 'intro' ? '已标记片头结束' : '已标记片尾开始')
+  try { await ShellService.SetVodSkipMarks(site, vodID, next) } catch (e) { handleError(e) }
+}
+
+async function clearSkipMarks() {
+  const site = currentVod.value?.site || detailSite.value || activeSite.value
+  const vodID = currentVod.value?.vodID || vodDetail.value?.ID
+  if (!site || !vodID) return
+  vodSkipMarks.value = { IntroEnd: 0, OutroStart: 0 }
+  vodSkipRuntime = { introSkipped: false, outroSkipped: false }
+  showSkipNotice('已清除跳过标记')
+  try { await ShellService.SetVodSkipMarks(site, vodID, { IntroEnd: 0, OutroStart: 0 }) } catch (e) { handleError(e) }
 }
 
 // releasePreload 释放当前下一集预载；切集、换源、停止与卸载都会调用。
@@ -1222,6 +1295,8 @@ async function onVodProgress(token: number, time: number, duration: number) {
   if (!isCurrentPlayback('vod', token)) return
   // 进度始终记录到运行时状态，供换源续播使用；持久化仍按 10 秒节流。
   vodPlaybackPosition.value = time
+  if (duration > 0) vodPlaybackDuration.value = duration
+  applySkip(token)
   if (!shouldRecordVodProgress(mode.value, vodView.value) || !currentVod.value) return
   const now = Date.now()
   if (now - lastProgressSave < 10000) return
@@ -1654,8 +1729,9 @@ onBeforeUnmount(() => {
               <div class="vod-player">
                 <p v-if="vodPlaybackStatus === 'preparing'" class="playback-status" aria-live="polite">正在加载剧集…</p>
                 <p v-if="vodPlaybackStatus === 'error'" class="playback-error" aria-live="assertive">剧集播放失败：{{ vodPlaybackError }}</p>
-                <PlaybackView :plan="vodPagePlaybackPlan" :seek-to="pendingSeek" :loading="vodPlayerLoading" :suppress-fallback="playbackSettings.AutoSwitchSource" @fallback="(id, position) => fallbackToMpv('vod', id, vodPlaybackToken, position)" @playback="(state, message) => onVodPlaybackSignal(vodPlaybackToken, state, message)" @progress="(time, duration) => onVodProgress(vodPlaybackToken, time, duration)" />
+                <PlaybackView :plan="vodPagePlaybackPlan" :seek-to="pendingSeek" :loading="vodPlayerLoading" :skip-marks="vodSkipMarks" @mark-intro="(p) => markSkipAt('intro', p)" @mark-outro="(p) => markSkipAt('outro', p)" @clear-skip-marks="clearSkipMarks" :suppress-fallback="playbackSettings.AutoSwitchSource" @fallback="(id, position) => fallbackToMpv('vod', id, vodPlaybackToken, position)" @playback="(state, message) => onVodPlaybackSignal(vodPlaybackToken, state, message)" @progress="(time, duration) => onVodProgress(vodPlaybackToken, time, duration)" />
                 <PreloadView :plan="preloadPlan" />
+                <div v-if="vodSkipNotice" class="skip-notice">{{ vodSkipNotice }}</div>
                 <div v-if="(vodDetail.Sources ?? []).length" class="ep-src-tabs">
                   <button v-for="src in vodDetail.Sources" :key="src" :class="{ active: src === activeSource }" @click="selectEpisodeSource(src)">{{ src }}</button>
                 </div>

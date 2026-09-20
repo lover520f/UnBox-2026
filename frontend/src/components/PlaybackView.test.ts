@@ -435,6 +435,24 @@ describe('PlaybackView', () => {
     expect(wrapper.find('.player-loading').exists()).toBe(false)
   })
 
+  it('跳过菜单可标记片头/片尾并清除', async () => {
+    const wrapper = await mountView()
+    setVideoTime(wrapper, 95)
+
+    await wrapper.find('.skip-btn').trigger('click')
+    expect(wrapper.find('.skip-menu').exists()).toBe(true)
+    await wrapper.findAll('.skip-menu li')[1].trigger('click')
+    expect(wrapper.emitted('markIntro')).toEqual([[95]])
+
+    await wrapper.find('.skip-btn').trigger('click')
+    await wrapper.findAll('.skip-menu li')[2].trigger('click')
+    expect(wrapper.emitted('markOutro')).toEqual([[95]])
+
+    await wrapper.find('.skip-btn').trigger('click')
+    await wrapper.findAll('.skip-menu li')[3].trigger('click')
+    expect(wrapper.emitted('clearSkipMarks')).toHaveLength(1)
+  })
+
   it('mpv 后端不渲染自绘播放控件', async () => {
     const wrapper = await mountView({ Backend: 'mpv' })
     expect(wrapper.find('.player-controls').exists()).toBe(false)
