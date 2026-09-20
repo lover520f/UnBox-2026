@@ -144,6 +144,15 @@ func TestDonationRemoteFailureFallsBackToCache(t *testing.T) {
 }
 
 func TestDonationNoCacheFallsBackToSnapshot(t *testing.T) {
+	originalSnapshot := donorsSnapshot
+	donorsSnapshot = []byte(`{
+		"updatedAt":"snapshot-time",
+		"donors":[
+			{"id":"snapshot-id","name":"内置用户","avatar":"snapshot.png","amount":66,"anonymous":false}
+		]
+	}`)
+	t.Cleanup(func() { donorsSnapshot = originalSnapshot })
+
 	var requests atomic.Int32
 	svc := newShellService(nil, nil, nil)
 	svc.httpClient = &http.Client{Transport: donationRoundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -155,8 +164,8 @@ func TestDonationNoCacheFallsBackToSnapshot(t *testing.T) {
 	if requests.Load() != 1 {
 		t.Fatalf("no cache issued %d requests, want 1", requests.Load())
 	}
-	if got.UpdatedAt != "" || len(got.Donors) != 0 {
-		t.Fatalf("GetDonationLeaderboard() = %+v, want built-in empty snapshot", got)
+	if got.UpdatedAt != "snapshot-time" || len(got.Donors) != 1 || got.Donors[0].Name != "内置用户" {
+		t.Fatalf("GetDonationLeaderboard() = %+v, want decoded built-in snapshot", got)
 	}
 }
 

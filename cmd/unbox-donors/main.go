@@ -23,6 +23,7 @@ const (
 	afdianQuerySponsorURL = "https://afdian.com/api/open/query-sponsor"
 	sponsorsPerPage       = 100
 	maxSponsorPages       = 10_000
+	anonymousDonorName    = "热心网友"
 )
 
 // Donor 是写入 docs/donors.json 的捐助人数据。
@@ -179,11 +180,12 @@ func fetchSponsorPage(
 	}
 	params := string(paramsBytes)
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	sign := signParams(token, params, ts, userID)
 	bodyBytes, err := json.Marshal(querySponsorRequest{
 		UserID: userID,
 		Params: params,
 		TS:     ts,
-		Sign:   signParams(token, params, ts, userID),
+		Sign:   sign,
 	})
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("序列化请求: %w", err)
@@ -207,7 +209,7 @@ func fetchSponsorPage(
 		return nil, 0, 0, fmt.Errorf("读取响应: %w", err)
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, 0, 0, fmt.Errorf("HTTP %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		return nil, 0, 0, formatSponsorHTTPError(resp.StatusCode, body, token, userID, ts, sign)
 	}
 
 	var result querySponsorResponse
@@ -237,6 +239,7 @@ func normalizeDonors(sponsors []rawSponsor) []Donor {
 		}
 		if donor.Anonymous {
 			donor.ID = ""
+			donor.Name = anonymousDonorName
 			donor.Avatar = ""
 		}
 		donors = append(donors, donor)
@@ -249,6 +252,55 @@ func normalizeDonors(sponsors []rawSponsor) []Donor {
 		return donors[i].Amount > donors[j].Amount
 	})
 	return donors
+}
+
+func formatSponsorHTTPError(statusCode int, body []byte, sensitiveValues ...string) error {
+	message := fmt.Sprintf("HTTP %d", statusCode)
+
+	var response struct {
+		EC *int    `json:"ec"`
+		EM *string `json:"em"`
+	}
+	if err := json.Unmarshal(body, &response); err == nil {
+		details := make([]string, 0, 2)
+		if response.EC != nil {
+			details = append(details, fmt.Sprintf("ec=%d", *response.EC))
+		}
+		if response.EM != nil {
+			if em := sanitizeSponsorHTTPErrorField(*response.EM, sensitiveValues...); em != "" {
+				details = append(details, "em="+em)
+			}
+		}
+		if len(details) > 0 {
+			message += " (" + strings.Join(details, ", ") + ")"
+		}
+	}
+	return errors.New(message)
+}
+
+func sanitizeSponsorHTTPErrorField(value string, sensitiveValues ...string) string {
+	clean := strings.Join(strings.Fields(value), " ")
+	if clean == "" {
+		return ""
+	}
+
+	lower := strings.ToLower(clean)
+	if strings.Contains(lower, "token") || strings.Contains(lower, "user_id") ||
+		strings.Contains(lower, "sign") || strings.Contains(lower, "ts") {
+		return "响应内容包含敏感字段"
+	}
+	for _, sensitive := range sensitiveValues {
+		if sensitive != "" && strings.Contains(clean, sensitive) {
+			return "响应内容包含敏感字段"
+		}
+	}
+
+	const maxRunes = 200
+	runes := []rune(clean)
+	if len(runes) > maxRunes {
+		return string(runes[:maxRunes]) + "…"
+	}
+	return clean
 }
 
 func signParams(token, params, ts, userID string) string {

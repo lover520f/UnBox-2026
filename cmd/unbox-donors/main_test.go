@@ -1,9 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestNormalizeDonorsSortsByAmountAndRedactsAnonymous(t *testing.T) {
@@ -15,13 +22,81 @@ func TestNormalizeDonorsSortsByAmountAndRedactsAnonymous(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("归一化后条数 = %d，期望 3", len(got))
 	}
-	// 金额降序；同额按昵称稳定排序（丙 与 乙 同为 10.5）
-	if got[0].Name != "甲" || got[1].Name != "丙" || got[2].Name != "乙" {
+	// 金额降序；同额按导出昵称稳定排序（乙 与匿名的「热心网友」同为 10.5）
+	if got[0].Name != "甲" || got[1].Name != "乙" || got[2].Name != "热心网友" {
 		t.Fatalf("排序错误: %#v", got)
 	}
-	// 匿名条目不得泄漏 ID 与头像
-	if got[1].ID != "" || got[1].Avatar != "" {
-		t.Fatalf("匿名条目未脱敏: %#v", got[1])
+	// 匿名条目不得泄漏 ID、头像与真实昵称
+	if got[2].Name != "热心网友" {
+		t.Fatalf("匿名条目昵称未脱敏: %#v", got[2])
+	}
+	if got[2].ID != "" || got[2].Avatar != "" {
+		t.Fatalf("匿名条目 ID 或头像未脱敏: %#v", got[2])
+	}
+}
+
+func TestFetchSponsorPageHTTPErrorDoesNotLeakRequestFields(t *testing.T) {
+	const (
+		userID = "private-user-id"
+		token  = "private-token"
+	)
+	t.Setenv("AFDIAN_USER_ID", userID)
+	t.Setenv("AFDIAN_TOKEN", token)
+
+	requestFields := make(chan querySponsorRequest, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req querySponsorRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		requestFields <- req
+
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ec":      401,
+			"em":      "凭证无效",
+			"token":   token,
+			"user_id": req.UserID,
+			"ts":      req.TS,
+			"sign":    req.Sign,
+		})
+	}))
+	defer server.Close()
+
+	_, _, _, err := fetchSponsorPage(context.Background(), server.Client(), server.URL, token, userID, 1)
+	if err == nil {
+		t.Fatal("fetchSponsorPage() 应返回 HTTP 错误")
+	}
+	var stderr bytes.Buffer
+	_ = reportError(&stderr, err)
+
+	var req querySponsorRequest
+	select {
+	case req = <-requestFields:
+	case <-time.After(time.Second):
+		t.Fatal("未收到请求字段，无法验证脱敏")
+	}
+
+	outputs := []struct {
+		name string
+		text string
+	}{
+		{name: "stderr", text: stderr.String()},
+		{name: "error", text: err.Error()},
+	}
+	for _, output := range outputs {
+		if !strings.Contains(output.text, "HTTP 401") {
+			t.Fatalf("%s = %q，缺少 HTTP 状态码", output.name, output.text)
+		}
+		if !strings.Contains(output.text, "em=凭证无效") {
+			t.Fatalf("%s = %q，缺少清理后的 em", output.name, output.text)
+		}
+		for _, sensitive := range []string{token, userID, req.TS, req.Sign, "token", "user_id", "sign", "ts"} {
+			if strings.Contains(output.text, sensitive) {
+				t.Fatalf("%s 泄漏敏感请求字段 %q: %q", output.name, sensitive, output.text)
+			}
+		}
 	}
 }
 
