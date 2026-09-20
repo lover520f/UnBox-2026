@@ -192,6 +192,43 @@ func TestFetchSponsorPageHTTPErrorDoesNotLeakRequestFields(t *testing.T) {
 	}
 }
 
+func TestFetchSponsorPageBusinessErrorDoesNotLeakRequestFields(t *testing.T) {
+	const (
+		userID = "private-user-id"
+		token  = "private-token"
+		sign   = "private-sign"
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ec": 401,
+			"em": "凭证无效 token=" + token + "&sign=" + sign,
+		})
+	}))
+	defer server.Close()
+
+	_, _, _, err := fetchSponsorPage(context.Background(), server.Client(), server.URL, token, userID, 1)
+	if err == nil {
+		t.Fatal("fetchSponsorPage() 应返回业务错误")
+	}
+	var stderr bytes.Buffer
+	_ = reportError(&stderr, err)
+
+	for _, output := range []struct {
+		name string
+		text string
+	}{
+		{name: "stderr", text: stderr.String()},
+		{name: "error", text: err.Error()},
+	} {
+		for _, sensitive := range []string{token, sign} {
+			if strings.Contains(output.text, sensitive) {
+				t.Fatalf("%s 泄漏敏感请求字段 %q: %q", output.name, sensitive, output.text)
+			}
+		}
+	}
+}
+
 func TestSignParamsMatchesAfdianScheme(t *testing.T) {
 	params, ts, userID, token := `{"page":1}`, "1700000000", "u1", "tok"
 	want := md5Hex(token + "params" + params + "ts" + ts + "user_id" + userID)

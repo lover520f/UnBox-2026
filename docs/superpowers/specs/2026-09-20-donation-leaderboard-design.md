@@ -9,7 +9,7 @@
 ## 2. 数据来源（方案 B3）
 
 - 榜单数据由**离线导出脚本**生成 JSON，发布在仓库 raw 地址（常量可改）：
-  `https://raw.githubusercontent.com/teaGod-s/UnBox/main/docs/donors.json`
+  `https://raw.githubusercontent.com/teaGod-s/UnBox/master/docs/donors.json`
 - **凭据不进入客户端**：爱发电 OpenAPI 需要 `user_id` + `token` 签名，这两个值只在本机通过环境变量
   （`AFDIAN_USER_ID` / `AFDIAN_TOKEN`）提供给导出脚本，不写入仓库、不编进应用。
 - 应用侧：**远程拉取优先 → 写本地缓存 → 失败回退内置快照**，界面始终有内容。
@@ -27,8 +27,8 @@
 
 - `amount` 为累计金额（元），仅用于排序；**界面不展示金额**（避免攀比与隐私顾虑）。
 - `anonymous` 为真时：用默认头像 + 昵称显示为「热心网友」，不展示 ID 与头像。
-- `donors` 由脚本按 `amount` 降序输出；应用端仍按同一规则排序（金额相同按昵称稳定排序），
-  不信任输入顺序。
+- `donors` 由脚本按 `amount` 降序输出（金额相同按昵称稳定排序）；后端归一化时保持该
+  排序，前端只做字段归一化并信任后端顺序，因为公开给前端的结构不包含金额。
 
 ## 4. 导出脚本
 
@@ -40,11 +40,11 @@
 
 ## 5. 应用侧实现
 
-- 后端（`internal/shell`）：`GetDonationLeaderboard(force bool) DonationLeaderboard`：
+- 后端（`internal/shell`）：`GetDonationLeaderboard() DonationLeaderboard`：
   - 缓存命中（默认 6 小时）直接返回；
   - 否则拉取远端 JSON，成功则写 `store.kv`（键 `donations.cache`）并返回；
   - 拉取/解析失败时返回缓存；无缓存时返回内置快照；**任何失败都不弹错误**。
-- 内置快照：`internal/shell` 内嵌一份发版时的 `donors.json`（`go:embed`），保证离线可用。
+- 内置快照：`internal/shell` 内嵌一份随榜单刷新同步的 `donors.json`（`go:embed`），保证离线可用。
 - 前端：设置页「关于」区域新增「捐助榜单」按钮 → 沿用现有 `settings-overlay` +
   `settings-panel` 主题样式弹窗；列表项为头像（圆形，加载失败回退默认头像）+ 昵称；
   底部小字标注「数据更新于 <updatedAt>」。

@@ -39,16 +39,17 @@ jobs:
           go run ./cmd/unbox-donors > "$tmp"
           test -s "$tmp"
           mv "$tmp" docs/donors.json
+          cp docs/donors.json internal/shell/donors_snapshot.json
 
       - name: Commit and push
         run: |
-          if git diff --quiet -- docs/donors.json; then
+          if git diff --quiet -- docs/donors.json internal/shell/donors_snapshot.json; then
             echo "捐助榜单无变化"
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/donors.json
+          git add docs/donors.json internal/shell/donors_snapshot.json
           git commit -m "chore(donors): refresh leaderboard [skip ci]"
           git push

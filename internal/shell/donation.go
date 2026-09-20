@@ -16,12 +16,12 @@ const (
 	donationCacheKey    = "donations.cache"
 	donationCacheTTL    = 6 * time.Hour
 	donationHTTPTimeout = 10 * time.Second
-	donationURL         = "https://raw.githubusercontent.com/teaGod-s/UnBox/main/docs/donors.json"
+	donationURL         = "https://raw.githubusercontent.com/teaGod-s/UnBox/master/docs/donors.json"
 	donationMaxBytes    = 1 << 20
 	anonymousDonorName  = "热心网友"
 )
 
-// donors_snapshot.json 是内置离线快照占位；正式发版时会用真实导出结果替换。
+// donors_snapshot.json 是随 docs/donors.json 同步的内置离线快照。
 //
 //go:embed donors_snapshot.json
 var donorsSnapshot []byte

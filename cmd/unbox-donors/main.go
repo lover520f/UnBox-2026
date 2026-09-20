@@ -342,7 +342,11 @@ func fetchSponsorPage(
 		return nil, 0, 0, fmt.Errorf("解析响应 JSON: %w", err)
 	}
 	if result.EC != http.StatusOK {
-		return nil, 0, 0, fmt.Errorf("接口错误 %d: %s", result.EC, result.EM)
+		em := sanitizeSponsorHTTPErrorField(result.EM, token, userID, ts, sign)
+		if em == "" {
+			return nil, 0, 0, fmt.Errorf("接口错误 %d", result.EC)
+		}
+		return nil, 0, 0, fmt.Errorf("接口错误 %d: %s", result.EC, em)
 	}
 	return result.Data.List, result.Data.TotalPage, result.Data.TotalCount, nil
 }

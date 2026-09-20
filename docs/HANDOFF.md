@@ -164,9 +164,10 @@
   后更新 Repository secret `AFDIAN_TOKEN`（若 `user_id` 同时变化则一并更新
   `AFDIAN_USER_ID`），再手动触发 workflow。轮换后必须同步更新 Secret，否则定时任务会开始失败。
 - 应用按三级链路取得榜单：远端 raw
-  `https://raw.githubusercontent.com/teaGod-s/UnBox/main/docs/donors.json` → `store.kv`
+  `https://raw.githubusercontent.com/teaGod-s/UnBox/master/docs/donors.json` → `store.kv`
   缓存键 `donations.cache`（TTL 6 小时）→ 内置快照
-  `internal/shell/donors_snapshot.json`。网络、HTTP 或 JSON 解析等任何失败都静默降级， 发版时由 `release.yml` 在打包前自动从 `docs/donors.json` 同步，无需人工拷贝。
+  `internal/shell/donors_snapshot.json`。网络、HTTP 或 JSON 解析等任何失败都静默降级；
+  `donors.yml` 每次刷新和 `release.yml` 打包前都会从 `docs/donors.json` 同步快照。
   不弹错误。
 - 隐私约定：界面不展示金额，金额仅用于排序；`anonymous` 条目在导出时就把昵称替换为
   「热心网友」并清空 ID/头像。`docs/donors.json` 是公开文件，脱敏必须在导出侧完成。

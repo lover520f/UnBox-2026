@@ -11,7 +11,6 @@ export interface DonationLeaderboard {
 }
 
 type UnknownRecord = Record<string, unknown>
-type RankedDonor = DonationDonor & { amount: number; index: number }
 
 function asRecord(value: unknown): UnknownRecord | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -28,11 +27,6 @@ function stringField(record: UnknownRecord, pascal: string, camel: string): stri
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function amountField(record: UnknownRecord): number {
-  const value = field(record, 'Amount', 'amount')
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0
-}
-
 function donorsField(value: UnknownRecord): unknown[] {
   const donors = field(value, 'Donors', 'donors')
   return Array.isArray(donors) ? donors : []
@@ -44,10 +38,13 @@ export function normalizeLeaderboard(value: unknown): DonationLeaderboard {
 
   const updatedValue = field(source, 'UpdatedAt', 'updatedAt')
   const updatedAt = typeof updatedValue === 'string' ? updatedValue : ''
-  const ranked = donorsField(source).map((item, index): RankedDonor => {
+  const normalizedUpdatedAt = updatedAt === '' || formatUpdatedAt(updatedAt) !== '未知'
+    ? updatedAt
+    : '未知'
+  const donors = donorsField(source).map((item): DonationDonor => {
     const donor = asRecord(item)
     if (!donor) {
-      return { ID: '', Name: '热心网友', Avatar: '', Anonymous: false, amount: 0, index }
+      return { ID: '', Name: '热心网友', Avatar: '', Anonymous: false }
     }
 
     const anonymous = field(donor, 'Anonymous', 'anonymous') === true
@@ -57,8 +54,6 @@ export function normalizeLeaderboard(value: unknown): DonationLeaderboard {
         Name: '热心网友',
         Avatar: '',
         Anonymous: true,
-        amount: amountField(donor),
-        index,
       }
     }
 
@@ -67,20 +62,12 @@ export function normalizeLeaderboard(value: unknown): DonationLeaderboard {
       Name: stringField(donor, 'Name', 'name') || '热心网友',
       Avatar: stringField(donor, 'Avatar', 'avatar'),
       Anonymous: false,
-      amount: amountField(donor),
-      index,
     }
   })
 
-  ranked.sort((left, right) => {
-    if (left.amount !== right.amount) return right.amount - left.amount
-    if (left.Name !== right.Name) return left.Name < right.Name ? -1 : 1
-    return left.index - right.index
-  })
-
   return {
-    UpdatedAt: updatedAt,
-    Donors: ranked.map(({ ID, Name, Avatar, Anonymous }) => ({ ID, Name, Avatar, Anonymous })),
+    UpdatedAt: normalizedUpdatedAt,
+    Donors: donors,
   }
 }
 

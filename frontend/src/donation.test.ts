@@ -5,35 +5,41 @@ describe('normalizeLeaderboard', () => {
   it('空值或缺少字段时返回空榜', () => {
     expect(normalizeLeaderboard(null)).toEqual({ UpdatedAt: '', Donors: [] })
     expect(normalizeLeaderboard({})).toEqual({ UpdatedAt: '', Donors: [] })
-    expect(normalizeLeaderboard({ donors: null })).toEqual({ UpdatedAt: '', Donors: [] })
-    expect(normalizeLeaderboard({ donors: [] })).toEqual({ UpdatedAt: '', Donors: [] })
+    expect(normalizeLeaderboard({ Donors: null })).toEqual({ UpdatedAt: '', Donors: [] })
+    expect(normalizeLeaderboard({ Donors: [] })).toEqual({ UpdatedAt: '', Donors: [] })
   })
 
-  it('按金额降序、同额按昵称排序，并移除金额字段', () => {
+  it('保留后端返回的金额排序', () => {
     const leaderboard = normalizeLeaderboard({
-      updatedAt: '2026-09-20T12:00:00+08:00',
-      donors: [
-        { id: 'c', name: '丙', avatar: 'c.png', amount: 50, anonymous: false },
-        { id: 'a', name: '甲', avatar: 'a.png', amount: 128, anonymous: false },
-        { id: 'b', name: '乙', avatar: 'b.png', amount: 50, anonymous: false },
+      UpdatedAt: '2026-09-20T12:00:00+08:00',
+      Donors: [
+        { ID: 'z', Name: 'Zed', Avatar: 'z.png', Anonymous: false },
+        { ID: 'c', Name: 'Cara', Avatar: 'c.png', Anonymous: false },
+        { ID: 'a', Name: 'Amy', Avatar: 'a.png', Anonymous: false },
       ],
     })
 
     expect(leaderboard.UpdatedAt).toBe('2026-09-20T12:00:00+08:00')
     expect(leaderboard.Donors).toEqual([
-      { ID: 'a', Name: '甲', Avatar: 'a.png', Anonymous: false },
-      { ID: 'c', Name: '丙', Avatar: 'c.png', Anonymous: false },
-      { ID: 'b', Name: '乙', Avatar: 'b.png', Anonymous: false },
+      { ID: 'z', Name: 'Zed', Avatar: 'z.png', Anonymous: false },
+      { ID: 'c', Name: 'Cara', Avatar: 'c.png', Anonymous: false },
+      { ID: 'a', Name: 'Amy', Avatar: 'a.png', Anonymous: false },
     ])
     expect(leaderboard.Donors.every((donor) => !Object.prototype.hasOwnProperty.call(donor, 'Amount'))).toBe(true)
   })
 
-  it('非法金额按 0 处理，同额同名保持输入顺序', () => {
+  it('非法更新时间归一为未知', () => {
+    const leaderboard = normalizeLeaderboard({ UpdatedAt: 'not-a-date', Donors: [] })
+
+    expect(leaderboard.UpdatedAt).toBe('未知')
+  })
+
+  it('字段归一化时保持输入顺序', () => {
     const leaderboard = normalizeLeaderboard({
-      donors: [
-        { id: 'first', name: '同名', amount: Number.NaN },
-        { id: 'second', name: '同名', amount: '128' },
-        { id: 'third', name: '同名', amount: Number.POSITIVE_INFINITY },
+      Donors: [
+        { ID: 'first', Name: '同名', Avatar: 'first.png', Anonymous: false },
+        { ID: 'second', Name: '同名', Avatar: 'second.png', Anonymous: false },
+        { ID: 'third', Name: '同名', Avatar: 'third.png', Anonymous: false },
       ],
     })
 
@@ -42,13 +48,12 @@ describe('normalizeLeaderboard', () => {
 
   it('匿名条目不暴露 ID、头像和真实昵称', () => {
     const leaderboard = normalizeLeaderboard({
-      donors: [
+      Donors: [
         {
-          id: 'secret-id',
-          name: '真实姓名',
-          avatar: 'https://example.com/avatar.png',
-          amount: 999,
-          anonymous: true,
+          ID: 'secret-id',
+          Name: '真实姓名',
+          Avatar: 'https://example.com/avatar.png',
+          Anonymous: true,
         },
       ],
     })
@@ -60,9 +65,9 @@ describe('normalizeLeaderboard', () => {
 
   it('缺失或全空白昵称时回退为热心网友', () => {
     const leaderboard = normalizeLeaderboard({
-      donors: [
+      Donors: [
         {},
-        { id: 'blank-name', name: '   ', avatar: 'blank.png' },
+        { ID: 'blank-name', Name: '   ', Avatar: 'blank.png', Anonymous: false },
       ],
     })
 
