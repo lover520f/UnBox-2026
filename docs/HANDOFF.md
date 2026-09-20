@@ -150,6 +150,17 @@
 - **媒体库片单布局**（已完成，`f221be04`、`2e7dc1de`、`75ccd108`、`0812c1cf`、`9ff00922`）：
   播放器与片单列间距为 `6px`，片单右侧保留 `12px`，滚动条宽度为 `6px`。
 
+### 捐助榜单自动更新（2026-09-20）
+
+- `docs/donors.json` 由 `.github/workflows/donors.yml` 每天 UTC 18:00 自动刷新；
+  失败时不会用空文件覆盖仓库中的榜单。
+- 凭据存放在仓库 Settings → Secrets and variables → Actions，Secret 名为
+  `AFDIAN_USER_ID` 和 `AFDIAN_TOKEN`；首次使用需先添加这两项。
+- 手动更新：进入 Actions → donors → Run workflow。
+- 轮换 token：在爱发电生成新 token 后，更新仓库的 `AFDIAN_TOKEN` Secret
+  （若 `user_id` 同时变化则一并更新 `AFDIAN_USER_ID`），再手动触发 workflow。
+- 榜单更新后无需发版；应用会在本地缓存过期（默认 6 小时）后自动拉到新数据。
+
 ## M4 之后新增的功能（本次会话）
 
 - **设置独立页**：分别导入点播源/直播源（互不覆盖），源历史（点击切换 / 删除 / 回显当前源）。

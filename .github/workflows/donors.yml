@@ -1,0 +1,54 @@
+# 定时从爱发电 OpenAPI 刷新离线捐助榜单。
+#
+# 凭据只从 Actions Secrets 注入，不会写入仓库或日志：
+#   AFDIAN_USER_ID / AFDIAN_TOKEN
+
+name: donors
+
+on:
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Refresh leaderboard
+        env:
+          AFDIAN_USER_ID: ${{ secrets.AFDIAN_USER_ID }}
+          AFDIAN_TOKEN: ${{ secrets.AFDIAN_TOKEN }}
+        run: |
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          go run ./cmd/unbox-donors > "$tmp"
+          test -s "$tmp"
+          mv "$tmp" docs/donors.json
+
+      - name: Commit and push
+        run: |
+          if git diff --quiet -- docs/donors.json; then
+            echo "捐助榜单无变化"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/donors.json
+          git commit -m "chore(donors): refresh leaderboard [skip ci]"
+          git push
