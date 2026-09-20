@@ -1250,14 +1250,18 @@ async function markSkipAt(kind: 'intro' | 'outro', position: number) {
   try { await ShellService.SetVodSkipMarks(site, vodID, next) } catch (e) { handleError(e) }
 }
 
-async function clearSkipMarks() {
+// resetSkipMark 把某一项重置为默认：片头 = 00:00、片尾 = 总时长，都表示不跳过。
+async function resetSkipMark(kind: 'intro' | 'outro') {
   const site = currentVod.value?.site || detailSite.value || activeSite.value
   const vodID = currentVod.value?.vodID || vodDetail.value?.ID
   if (!site || !vodID) return
-  vodSkipMarks.value = { IntroEnd: 0, OutroStart: 0 }
-  vodSkipRuntime = { introSkipped: false, outroSkipped: false }
-  showSkipNotice('已清除跳过标记')
-  try { await ShellService.SetVodSkipMarks(site, vodID, { IntroEnd: 0, OutroStart: 0 }) } catch (e) { handleError(e) }
+  const next = { ...vodSkipMarks.value }
+  if (kind === 'intro') next.IntroEnd = 0
+  else next.OutroStart = 0
+  vodSkipMarks.value = next
+  vodSkipRuntime = kind === 'intro' ? { ...vodSkipRuntime, introSkipped: false } : { ...vodSkipRuntime, outroSkipped: false }
+  showSkipNotice(kind === 'intro' ? '片头已重置为 00:00' : '片尾已重置为片尾')
+  try { await ShellService.SetVodSkipMarks(site, vodID, next) } catch (e) { handleError(e) }
 }
 
 // releasePreload 释放当前下一集预载；切集、换源、停止与卸载都会调用。
@@ -1729,7 +1733,7 @@ onBeforeUnmount(() => {
               <div class="vod-player">
                 <p v-if="vodPlaybackStatus === 'preparing'" class="playback-status" aria-live="polite">正在加载剧集…</p>
                 <p v-if="vodPlaybackStatus === 'error'" class="playback-error" aria-live="assertive">剧集播放失败：{{ vodPlaybackError }}</p>
-                <PlaybackView :plan="vodPagePlaybackPlan" :seek-to="pendingSeek" :loading="vodPlayerLoading" :skip-marks="vodSkipMarks" @mark-intro="(p) => markSkipAt('intro', p)" @mark-outro="(p) => markSkipAt('outro', p)" @clear-skip-marks="clearSkipMarks" :suppress-fallback="playbackSettings.AutoSwitchSource" @fallback="(id, position) => fallbackToMpv('vod', id, vodPlaybackToken, position)" @playback="(state, message) => onVodPlaybackSignal(vodPlaybackToken, state, message)" @progress="(time, duration) => onVodProgress(vodPlaybackToken, time, duration)" />
+                <PlaybackView :plan="vodPagePlaybackPlan" :seek-to="pendingSeek" :loading="vodPlayerLoading" :skip-marks="vodSkipMarks" @mark-intro="(p) => markSkipAt('intro', p)" @mark-outro="(p) => markSkipAt('outro', p)" @reset-intro="resetSkipMark('intro')" @reset-outro="resetSkipMark('outro')" :suppress-fallback="playbackSettings.AutoSwitchSource" @fallback="(id, position) => fallbackToMpv('vod', id, vodPlaybackToken, position)" @playback="(state, message) => onVodPlaybackSignal(vodPlaybackToken, state, message)" @progress="(time, duration) => onVodProgress(vodPlaybackToken, time, duration)" />
                 <PreloadView :plan="preloadPlan" />
                 <div v-if="vodSkipNotice" class="skip-notice">{{ vodSkipNotice }}</div>
                 <div v-if="(vodDetail.Sources ?? []).length" class="ep-src-tabs">

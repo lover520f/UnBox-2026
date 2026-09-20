@@ -34,7 +34,8 @@ const emit = defineEmits<{
   playback: [state: PlaybackState, message?: string]
   markIntro: [position: number]
   markOutro: [position: number]
-  clearSkipMarks: []
+  resetIntro: []
+  resetOutro: []
 }>()
 const video = ref<HTMLVideoElement | null>(null)
 const trackState = ref<TrackState | null>(null)
@@ -352,10 +353,6 @@ function markOutro(): void {
   emit('markOutro', video.value?.currentTime ?? 0)
 }
 
-function clearMarks(): void {
-  emit('clearSkipMarks')
-}
-
 // formatTime 输出 mm:ss（超过一小时给 h:mm:ss）。
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '00:00'
@@ -544,13 +541,11 @@ onBeforeUnmount(() => {
         <button v-if="isHls" class="track-toggle" type="button" title="轨道设置" aria-label="轨道设置" @click.stop="menuOpen = !menuOpen">⚙</button>
         <button class="rotate-toggle" type="button" :title="`画面旋转（当前 ${rotation}°）`" aria-label="画面旋转" @click.stop="cycleRotation">⟳ {{ rotation }}°</button>
         <button class="skip-btn" type="button"
-          :title="skipMarks?.IntroEnd ? `片头结束点 ${formatTime(skipMarks.IntroEnd)}，点击重新标记为当前位置` : '点击把当前位置标记为片头结束'"
-          aria-label="标记片头结束" @click.stop="markIntro">片头 {{ skipMarks?.IntroEnd ? formatTime(skipMarks.IntroEnd) : '--' }}</button>
+          title="左键：把当前位置标记为片头结束点；右键：重置为 00:00（不跳片头）"
+          aria-label="片头标记" @click.stop="markIntro" @contextmenu.prevent.stop="emit('resetIntro')">片头 {{ formatTime(skipMarks?.IntroEnd || 0) }}</button>
         <button class="skip-btn" type="button"
-          :title="skipMarks?.OutroStart ? `片尾开始点 ${formatTime(skipMarks.OutroStart)}，点击重新标记为当前位置` : '点击把当前位置标记为片尾开始'"
-          aria-label="标记片尾开始" @click.stop="markOutro">片尾 {{ skipMarks?.OutroStart ? formatTime(skipMarks.OutroStart) : '--' }}</button>
-        <button v-if="skipMarks?.IntroEnd || skipMarks?.OutroStart" class="skip-btn skip-clear" type="button"
-          title="清除跳过标记" aria-label="清除跳过标记" @click.stop="clearMarks">✕</button>
+          :title="`左键：把当前位置标记为片尾开始点；右键：重置为片尾 ${formatTime(duration)}（不跳片尾）`"
+          aria-label="片尾标记" @click.stop="markOutro" @contextmenu.prevent.stop="emit('resetOutro')">片尾 {{ formatTime(skipMarks?.OutroStart || duration) }}</button>
       </div>
       <div class="player-bar">
         <button class="ctrl-btn" type="button" :title="playing ? '暂停' : '播放'" :aria-label="playing ? '暂停' : '播放'" @click.stop="togglePlay">

@@ -435,21 +435,32 @@ describe('PlaybackView', () => {
     expect(wrapper.find('.player-loading').exists()).toBe(false)
   })
 
-  it('片头/片尾按钮直接显示并回显标记时间', async () => {
+  it('片头/片尾按钮回显绝对标记点，右键重置', async () => {
     const wrapper = mount(PlaybackView, {
-      props: { plan: { ID: 'p1', Backend: 'web', URL: '/x.m3u8', Kind: 'hls', CanFallback: true }, skipMarks: { IntroEnd: 92, OutroStart: 0 } },
+      props: { plan: { ID: 'p1', Backend: 'web', URL: '/x.m3u8', Kind: 'hls', CanFallback: true } },
     })
     await nextTick()
-    setVideoTime(wrapper, 95)
-    const intro = wrapper.find('button[aria-label="标记片头结束"]')
-    expect(intro.text()).toContain('01:32')
-    expect(wrapper.find('button[aria-label="标记片尾开始"]').text()).toContain('--')
+    const video = wrapper.find('video').element as HTMLVideoElement
+    Object.defineProperty(video, 'duration', { configurable: true, get: () => 1260 })
+    await wrapper.find('video').trigger('timeupdate')
+
+    // 未标记：片头 00:00，片尾回显总时长
+    const intro = wrapper.find('button[aria-label="片头标记"]')
+    const outro = wrapper.find('button[aria-label="片尾标记"]')
+    expect(intro.text()).toContain('00:00')
+    expect(outro.text()).toContain('21:00')
+
+    setVideoTime(wrapper, 90)
     await intro.trigger('click')
-    expect(wrapper.emitted('markIntro')).toEqual([[95]])
-    await wrapper.find('button[aria-label="标记片尾开始"]').trigger('click')
-    expect(wrapper.emitted('markOutro')).toEqual([[95]])
-    await wrapper.find('button[aria-label="清除跳过标记"]').trigger('click')
-    expect(wrapper.emitted('clearSkipMarks')).toHaveLength(1)
+    expect(wrapper.emitted('markIntro')).toEqual([[90]])
+    setVideoTime(wrapper, 1200)
+    await outro.trigger('click')
+    expect(wrapper.emitted('markOutro')).toEqual([[1200]])
+
+    await intro.trigger('contextmenu')
+    await outro.trigger('contextmenu')
+    expect(wrapper.emitted('resetIntro')).toHaveLength(1)
+    expect(wrapper.emitted('resetOutro')).toHaveLength(1)
   })
 
   it('mpv 后端不渲染自绘播放控件', async () => {
