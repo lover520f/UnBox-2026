@@ -154,12 +154,26 @@
 
 - `docs/donors.json` 由 `.github/workflows/donors.yml` 每天 UTC 18:00 自动刷新；
   失败时不会用空文件覆盖仓库中的榜单。
-- 凭据存放在仓库 Settings → Secrets and variables → Actions，Secret 名为
-  `AFDIAN_USER_ID` 和 `AFDIAN_TOKEN`；首次使用需先添加这两项。
-- 手动更新：进入 Actions → donors → Run workflow。
-- 轮换 token：在爱发电生成新 token 后，更新仓库的 `AFDIAN_TOKEN` Secret
-  （若 `user_id` 同时变化则一并更新 `AFDIAN_USER_ID`），再手动触发 workflow。
-- 榜单更新后无需发版；应用会在本地缓存过期（默认 6 小时）后自动拉到新数据。
+- 导出脚本读取 `AFDIAN_USER_ID` / `AFDIAN_TOKEN` 环境变量，也可本地直接执行：
+  `AFDIAN_USER_ID=xxx AFDIAN_TOKEN=yyy go run ./cmd/unbox-donors > docs/donors.json`，
+  然后提交更新后的 `docs/donors.json`。
+- 凭据存放在仓库 Settings → Secrets and variables → Actions 的 **Repository secrets**，
+  Secret 名为 `AFDIAN_USER_ID` 和 `AFDIAN_TOKEN`；首次使用需先添加这两项。不要使用
+  Environment secrets：定时任务无人在场审批，可能拿不到凭据。
+- 手动更新：进入 Actions → donors → Run workflow。轮换 token 时，在爱发电生成新 token
+  后更新 Repository secret `AFDIAN_TOKEN`（若 `user_id` 同时变化则一并更新
+  `AFDIAN_USER_ID`），再手动触发 workflow。轮换后必须同步更新 Secret，否则定时任务会开始失败。
+- 应用按三级链路取得榜单：远端 raw
+  `https://raw.githubusercontent.com/teaGod-s/UnBox/main/docs/donors.json` → `store.kv`
+  缓存键 `donations.cache`（TTL 6 小时）→ 内置快照
+  `internal/shell/donors_snapshot.json`。网络、HTTP 或 JSON 解析等任何失败都静默降级，
+  不弹错误。
+- 隐私约定：界面不展示金额，金额仅用于排序；`anonymous` 条目在导出时就把昵称替换为
+  「热心网友」并清空 ID/头像。`docs/donors.json` 是公开文件，脱敏必须在导出侧完成。
+- 更新榜单只需替换 `docs/donors.json`，无需发版；应用会在缓存过期后自动拉到新数据。
+- 已知不确定项：爱发电响应字段名可能变化，导出脚本已兼容 `sponsor` / `user` 嵌套及
+  `name` / `user_name` / `nickname` 等昵称别名；字段缺失时会向 stderr 打印只含实际键名的
+  警告，便于排障且不输出字段值。
 
 ## M4 之后新增的功能（本次会话）
 
