@@ -42,20 +42,50 @@ type Leaderboard struct {
 }
 
 type rawUser struct {
-	UserID string `json:"user_id"`
-	Name   string `json:"user_name"`
-	Avatar string `json:"user_avatar"`
+	UserID      string `json:"user_id"`
+	UserIDStr   string `json:"user_id_str"`
+	Name        string `json:"name"`
+	UserName    string `json:"user_name"`
+	Nickname    string `json:"nickname"`
+	Avatar      string `json:"avatar"`
+	AvatarURL   string `json:"avatar_url"`
+	UserAvatar  string `json:"user_avatar"`
+	IsAnonymous bool   `json:"is_anonymous"`
+
+	present bool
+	keys    []string
 }
 
 type rawSponsor struct {
+	Sponsor      rawUser `json:"sponsor"`
 	User         rawUser `json:"user"`
 	AllSumAmount string  `json:"all_sum_amount"`
 	Anonymous    bool    `json:"anonymous"`
+	IsAnonymous  bool    `json:"is_anonymous"`
+
+	keys []string
 }
 
-// UnmarshalJSON 兼容爱发电可能返回的 anonymous / is_anonymous 字段。
-// 查询接口的匿名字段名称没有在所有响应样例中统一；两种字段都缺失时按公开
-// 条目处理。嵌套 user 内的 is_anonymous 也一并兼容。
+// UnmarshalJSON 记录嵌套对象实际出现的键名，用于字段缺失时诊断。
+func (u *rawUser) UnmarshalJSON(data []byte) error {
+	type userAlias rawUser
+	var user userAlias
+	if err := json.Unmarshal(data, &user); err != nil {
+		return err
+	}
+
+	keys, err := objectKeyNames(data)
+	if err != nil {
+		return err
+	}
+	*u = rawUser(user)
+	u.present = !bytes.Equal(bytes.TrimSpace(data), []byte("null"))
+	u.keys = keys
+	return nil
+}
+
+// UnmarshalJSON 兼容爱发电返回的 sponsor / user 嵌套形态，以及
+// anonymous / is_anonymous 字段。缺失匿名字段时按公开条目处理。
 func (s *rawSponsor) UnmarshalJSON(data []byte) error {
 	type sponsorAlias rawSponsor
 	var sponsor sponsorAlias
@@ -63,19 +93,114 @@ func (s *rawSponsor) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	var extra struct {
-		IsAnonymous bool `json:"is_anonymous"`
-		User        struct {
-			IsAnonymous bool `json:"is_anonymous"`
-		} `json:"user"`
-	}
-	if err := json.Unmarshal(data, &extra); err != nil {
+	keys, err := objectKeyNames(data)
+	if err != nil {
 		return err
 	}
-
 	*s = rawSponsor(sponsor)
-	s.Anonymous = s.Anonymous || extra.IsAnonymous || extra.User.IsAnonymous
+	s.keys = keys
+	s.Anonymous = s.Anonymous || s.IsAnonymous || s.Sponsor.IsAnonymous || s.User.IsAnonymous
 	return nil
+}
+
+func objectKeyNames(data []byte) ([]string, error) {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return nil, nil
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	delim, ok := token.(json.Delim)
+	if !ok || delim != '{' {
+		return nil, errors.New("JSON 对象格式无效")
+	}
+
+	keys := make([]string, 0)
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, ok := token.(string)
+		if !ok {
+			return nil, errors.New("JSON 对象键名格式无效")
+		}
+		keys = append(keys, key)
+
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+func (u rawUser) id() string {
+	for _, value := range []string{u.UserID, u.UserIDStr} {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func (u rawUser) name() string {
+	for _, value := range []string{u.Name, u.UserName, u.Nickname} {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func (u rawUser) avatar() string {
+	for _, value := range []string{u.Avatar, u.AvatarURL, u.UserAvatar} {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func (u rawUser) hasIdentity() bool {
+	return u.id() != "" || u.name() != "" || u.avatar() != ""
+}
+
+func (s rawSponsor) identity() rawUser {
+	if s.Sponsor.hasIdentity() {
+		return s.Sponsor
+	}
+	if s.User.hasIdentity() {
+		return s.User
+	}
+	if s.Sponsor.present {
+		return s.Sponsor
+	}
+	return s.User
+}
+
+func (s rawSponsor) actualKeys() string {
+	parts := make([]string, 0, 2)
+	if s.Sponsor.present {
+		parts = append(parts, formatObjectKeys("sponsor", s.Sponsor.keys))
+	}
+	if s.User.present {
+		parts = append(parts, formatObjectKeys("user", s.User.keys))
+	}
+	if len(parts) == 0 {
+		return formatObjectKeys("", s.keys)
+	}
+	return strings.Join(parts, ",")
+}
+
+func formatObjectKeys(name string, keys []string) string {
+	return name + "{" + strings.Join(keys, ",") + "}"
 }
 
 type querySponsorParams struct {
@@ -125,7 +250,7 @@ func run(ctx context.Context, stdout, stderr io.Writer, client *http.Client, now
 
 	leaderboard := Leaderboard{
 		UpdatedAt: now().Format(time.RFC3339),
-		Donors:    normalizeDonors(sponsors),
+		Donors:    normalizeDonorsWithDiagnostics(sponsors, stderr),
 	}
 	encoder := json.NewEncoder(stdout)
 	encoder.SetEscapeHTML(false)
@@ -223,17 +348,27 @@ func fetchSponsorPage(
 }
 
 func normalizeDonors(sponsors []rawSponsor) []Donor {
+	return normalizeDonorsWithDiagnostics(sponsors, io.Discard)
+}
+
+func normalizeDonorsWithDiagnostics(sponsors []rawSponsor, stderr io.Writer) []Donor {
 	donors := make([]Donor, 0, len(sponsors))
-	for _, sponsor := range sponsors {
+	for index, sponsor := range sponsors {
 		amount, err := strconv.ParseFloat(strings.TrimSpace(sponsor.AllSumAmount), 64)
 		if err != nil || math.IsNaN(amount) || math.IsInf(amount, 0) {
 			amount = 0
 		}
 
+		user := sponsor.identity()
+		name := user.name()
+		if name == "" && stderr != nil {
+			fmt.Fprintf(stderr, "警告: 第%d条赞助者缺少姓名字段，实际键: %s\n", index+1, sponsor.actualKeys())
+		}
+
 		donor := Donor{
-			ID:        sponsor.User.UserID,
-			Name:      sponsor.User.Name,
-			Avatar:    sponsor.User.Avatar,
+			ID:        user.id(),
+			Name:      name,
+			Avatar:    user.avatar(),
 			Amount:    amount,
 			Anonymous: sponsor.Anonymous,
 		}

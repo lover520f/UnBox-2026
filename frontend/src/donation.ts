@@ -47,7 +47,7 @@ export function normalizeLeaderboard(value: unknown): DonationLeaderboard {
   const ranked = donorsField(source).map((item, index): RankedDonor => {
     const donor = asRecord(item)
     if (!donor) {
-      return { ID: '', Name: '未命名', Avatar: '', Anonymous: false, amount: 0, index }
+      return { ID: '', Name: '热心网友', Avatar: '', Anonymous: false, amount: 0, index }
     }
 
     const anonymous = field(donor, 'Anonymous', 'anonymous') === true
@@ -64,7 +64,7 @@ export function normalizeLeaderboard(value: unknown): DonationLeaderboard {
 
     return {
       ID: stringField(donor, 'ID', 'id'),
-      Name: stringField(donor, 'Name', 'name') || '未命名',
+      Name: stringField(donor, 'Name', 'name') || '热心网友',
       Avatar: stringField(donor, 'Avatar', 'avatar'),
       Anonymous: false,
       amount: amountField(donor),

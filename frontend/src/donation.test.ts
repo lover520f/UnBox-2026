@@ -58,11 +58,17 @@ describe('normalizeLeaderboard', () => {
     ])
   })
 
-  it('缺失展示字段时提供安全默认值', () => {
-    const leaderboard = normalizeLeaderboard({ donors: [{}] })
+  it('缺失或全空白昵称时回退为热心网友', () => {
+    const leaderboard = normalizeLeaderboard({
+      donors: [
+        {},
+        { id: 'blank-name', name: '   ', avatar: 'blank.png' },
+      ],
+    })
 
     expect(leaderboard.Donors).toEqual([
-      { ID: '', Name: '未命名', Avatar: '', Anonymous: false },
+      { ID: '', Name: '热心网友', Avatar: '', Anonymous: false },
+      { ID: 'blank-name', Name: '热心网友', Avatar: 'blank.png', Anonymous: false },
     ])
   })
 })
