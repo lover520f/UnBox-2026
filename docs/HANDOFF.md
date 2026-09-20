@@ -80,6 +80,20 @@
   `on(fallback)`，`emit('fallback')` 永远匹配不上，web→mpv 降级回调此前完全失效；
   已全部改为 `@fallback` / `@playback`，并加了禁止该写法的回归断言。
 
+- **点播加载反馈 + 跳过片头片尾**（`2026-09-20`）：
+  - 起播加载反馈：`vodPlayerLoading` 从发起播放保持到播放器上报 `playing`（画面真正出现），
+    期间 `PlaybackView` 显示遮罩 + 转圈 + 「正在加载剧集…」。此前提示在「后端播放计划就绪」
+    时就消失，而那时才开始拉清单/分片，等于真正的等待窗口没有反馈。
+  - 跳过标记：`VodSkipMarks{IntroEnd, OutroStart}`（秒，0 为未标记）存在 `store.kv` 的
+    `vod.skip.<site>.<vodID>`，按「站点+影片」共享，同剧各集通用；读取失败/非法 JSON 回退零值。
+  - 判定逻辑收敛为纯函数 `frontend/src/vodSkip.ts` 的 `resolveSkipAction`：片头优先、
+    时长未知不跳片尾、每个动作每集只跳一次。Web 由 `progress` 驱动，mpv 由 `playback:event`
+    的位置事件驱动；跳片尾 = 跳到结尾触发既有 `ended` → 自动切集。
+  - **mpv 调研结论**：mpv 无内置跳片头片尾能力，可用原语是 `--start`/`--end`（`end` 亦为
+    运行时可设属性）、`edl://` 协议、Lua 脚本。UnBox 已有 IPC 的 `time-pos` 观察与 `seek`，
+    因此在应用层实现最省事，Web/mpv 共用同一套规则，无需注入脚本或构造 EDL。
+  - 暂未覆盖：mpv 路径目前只做片头跳过（片尾需要总时长，PlaybackEvent 尚未带 duration）。
+
 - **Web 播放器自绘控件 / 旋转 / 全屏**（`2026-09-17`）：
   - 播放控件改为自绘（`.player-controls` 覆盖层：播放/暂停、进度、时间、倍速、静音、
     音量、画中画、全屏），`<video>` 不再带 `controls`。原生控件会跟着旋转后的画面一起
