@@ -99,12 +99,17 @@ tasks:
     cmds:
       # 安装器与 exe 的版本信息来自仓库内模板，构建前按 VERSION 覆盖。不覆盖的话
       # 控制面板「程序和功能」里会永远显示模板里写死的版本，而不是发布 tag。
+      # 注意：不能用 cmd 级 dir（wails3 task 不保证切换 cwd），这里自行探测目录，
+      # 无论从仓库根还是 build/windows 下调用都能工作。
       - cmd: |
           v='{{.VERSION}}'
-          sed -i "s/!define INFO_PRODUCTVERSION \".*\"/!define INFO_PRODUCTVERSION \"$v\"/" nsis/project.nsi
-          sed -i "s/\"file_version\": \".*\"/\"file_version\": \"$v\"/" info.json
-          sed -i "s/\"ProductVersion\": \".*\"/\"ProductVersion\": \"$v\"/" info.json
-        dir: build/windows
+          dir=build/windows
+          [ -d "$dir" ] || dir=.
+          [ -f "$dir/nsis/project.nsi" ] || { echo "找不到 $dir/nsis/project.nsi"; exit 1; }
+          sed -i "s/!define INFO_PRODUCTVERSION \".*\"/!define INFO_PRODUCTVERSION \"$v\"/" "$dir/nsis/project.nsi"
+          sed -i "s/\"file_version\": \".*\"/\"file_version\": \"$v\"/" "$dir/info.json"
+          sed -i "s/\"ProductVersion\": \".*\"/\"ProductVersion\": \"$v\"/" "$dir/info.json"
+          echo "版本信息已同步为 $v"
       - task: '{{if eq (.FORMAT | default "nsis") "msix"}}create:msix:package{{else}}create:nsis:installer{{end}}'
         vars:
           INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "machine"}}'
