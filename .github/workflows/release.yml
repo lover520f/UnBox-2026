@@ -104,6 +104,13 @@ jobs:
             echo "VERSION=0.0.1" >> "$GITHUB_ENV"
           fi
 
+      - name: Sync donors snapshot
+        run: |
+          # go:embed 不能跨包目录引用 docs/，发版前把最新榜单拷成内置快照，
+          # 否则离线/拉取失败的用户看到的是空列表而不是发版时的真实榜单。
+          cp docs/donors.json internal/shell/donors_snapshot.json
+          echo "内置快照已同步: $(wc -c < internal/shell/donors_snapshot.json) 字节"
+
       - name: Package Linux (deb + AppImage)
         if: runner.os == 'Linux'
         run: |
