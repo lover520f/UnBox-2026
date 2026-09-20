@@ -80,6 +80,13 @@
   `on(fallback)`，`emit('fallback')` 永远匹配不上，web→mpv 降级回调此前完全失效；
   已全部改为 `@fallback` / `@playback`，并加了禁止该写法的回归断言。
 
+- **Windows 安装包版本号同步**（`2026-09-20`）：控制面板「程序和功能」显示的版本取自
+  `build/windows/nsis/project.nsi` 里的 `INFO_PRODUCTVERSION`（由 `wails_tools.nsh` 写入
+  `Uninstall\DisplayVersion`），该值是仓库内硬编码的；`build/windows/info.json` 的
+  `file_version` / `ProductVersion` 同理。现在 `build/windows/Taskfile.yml` 的 `package`
+  任务在打包前用 `VERSION`（发布构建为 tag 去 v 前缀）覆盖这几处，CI 与本地打 Windows 包
+  都会带上真实版本。注意只对**新构建**生效，已安装的旧版本需重新安装才会更新。
+
 - **点播加载反馈 + 跳过片头片尾**（`2026-09-20`）：
   - 起播加载反馈：`vodPlayerLoading` 从发起播放保持到播放器上报 `playing`（画面真正出现），
     期间 `PlaybackView` 显示遮罩 + 转圈 + 「正在加载剧集…」。此前提示在「后端播放计划就绪」

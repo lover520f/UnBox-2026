@@ -97,6 +97,14 @@ tasks:
   package:
     summary: Packages the application
     cmds:
+      # 安装器与 exe 的版本信息来自仓库内模板，构建前按 VERSION 覆盖。不覆盖的话
+      # 控制面板「程序和功能」里会永远显示模板里写死的版本，而不是发布 tag。
+      - cmd: |
+          v='{{.VERSION}}'
+          sed -i "s/!define INFO_PRODUCTVERSION \".*\"/!define INFO_PRODUCTVERSION \"$v\"/" nsis/project.nsi
+          sed -i "s/\"file_version\": \".*\"/\"file_version\": \"$v\"/" info.json
+          sed -i "s/\"ProductVersion\": \".*\"/\"ProductVersion\": \"$v\"/" info.json
+        dir: build/windows
       - task: '{{if eq (.FORMAT | default "nsis") "msix"}}create:msix:package{{else}}create:nsis:installer{{end}}'
         vars:
           INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "machine"}}'
